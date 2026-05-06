@@ -12,7 +12,7 @@
   --text: #ffffff;
   --text-dim: rgba(255,255,255,0.6);
   --card: rgba(255,255,255,0.04);
-  --border: rgba(255,255,255,0.08);
+  --border: rgba(255,255,255,0.25)
 }
 
 html, body { overflow-x: hidden; }

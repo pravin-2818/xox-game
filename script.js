@@ -142,7 +142,7 @@ function createGame() {
 socket.on('gameCreated', ({ gameId, playerSymbol }) => {
   currentGameId = gameId;
   mySymbol = playerSymbol;
-  const link = `${window.location.origin}?game=${gameId}`;
+  const link = `${window.location.origin}${window.location.pathname}?game=${gameId}`;
   document.getElementById('shareLink').value = link;
   document.getElementById('gameIdDisplay').textContent = gameId;
   document.getElementById('gameLinkBox').classList.remove('hidden');
