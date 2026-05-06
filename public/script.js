@@ -1,8 +1,4 @@
-// Detect if running on GitHub Pages or localhost
-const socketUrl = window.location.hostname.includes('github.io') 
-  ? 'http://localhost:3000' 
-  : undefined;
-const socket = io(socketUrl);
+const socket = io('https://xox-game-rge4.onrender.com');
 
 let currentGameId = null;
 let mySymbol = null;
@@ -146,11 +142,7 @@ function createGame() {
 socket.on('gameCreated', ({ gameId, playerSymbol }) => {
   currentGameId = gameId;
   mySymbol = playerSymbol;
-  // Generate share link with correct path for GitHub Pages
-  const pathname = window.location.pathname.endsWith('/') 
-    ? window.location.pathname 
-    : window.location.pathname + '/';
-  const link = `${window.location.origin}${pathname}?game=${gameId}`;
+  const link = `${window.location.origin}?game=${gameId}`;
   document.getElementById('shareLink').value = link;
   document.getElementById('gameIdDisplay').textContent = gameId;
   document.getElementById('gameLinkBox').classList.remove('hidden');
