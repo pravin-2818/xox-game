@@ -1,4 +1,25 @@
-const socket = io('https://xox-game-rge4.onrender.com');
+const socket = io('https://xox-game-rge4.onrender.com', {
+  reconnectionAttempts: 10,
+  timeout: 20000
+});
+
+let socketConnected = false;
+
+socket.on('connect', () => {
+  socketConnected = true;
+  document.querySelectorAll('.server-status').forEach(el => {
+    el.textContent = '🟢 Connected';
+    el.style.color = '#4ade80';
+  });
+});
+
+socket.on('connect_error', () => {
+  socketConnected = false;
+  document.querySelectorAll('.server-status').forEach(el => {
+    el.textContent = '🔴 Server starting... wait 30s then retry';
+    el.style.color = '#f87171';
+  });
+});
 
 let currentGameId = null;
 let mySymbol = null;
@@ -6,6 +27,9 @@ let myName = null;
 let myTurn = false;
 let cpuBoard = Array(9).fill(null);
 let cpuGameOver = false;
+let cpuGoesFirst = false;
+let playerSym = 'X';
+let cpuSym = 'O';
 let typingTimeout = null;
 
 const dares = [
@@ -135,6 +159,7 @@ window.addEventListener('load', () => {
 function createGame() {
   const name = document.getElementById('createName').value.trim();
   if (!name) return showToast('Please enter your name');
+  if (!socketConnected) return showToast('Server is starting up... Please wait 30 seconds and try again');
   myName = name;
   socket.emit('createGame', { playerName: name });
 }
@@ -356,15 +381,44 @@ function closeDare() {
 function startComputerGame() {
   cpuBoard = Array(9).fill(null);
   cpuGameOver = false;
-  document.getElementById('cpuStatus').textContent = "Your turn";
-  document.getElementById('cpuYou').classList.add('active');
-  document.getElementById('cpuBot').classList.remove('active');
+
+  // Alternate who goes first each round
+  cpuGoesFirst = !cpuGoesFirst;
+  playerSym = cpuGoesFirst ? 'O' : 'X';
+  cpuSym    = cpuGoesFirst ? 'X' : 'O';
+
+  // Update UI symbols
+  document.querySelector('#cpuYou .player-symbol').textContent = playerSym;
+  document.querySelector('#cpuYou .player-symbol').className = 'player-symbol ' + (playerSym === 'X' ? 'x-color' : 'o-color');
+  document.querySelector('#cpuBot .player-symbol').textContent = cpuSym;
+  document.querySelector('#cpuBot .player-symbol').className = 'player-symbol ' + (cpuSym === 'X' ? 'x-color' : 'o-color');
+
   renderBoard('cpuBoard', cpuBoard, cpuPlayerMove);
+
+  if (cpuGoesFirst) {
+    // Computer goes first
+    document.getElementById('cpuStatus').textContent = "Computer thinking...";
+    document.getElementById('cpuYou').classList.remove('active');
+    document.getElementById('cpuBot').classList.add('active');
+    setTimeout(() => {
+      const move = bestMove(cpuBoard, cpuSym, playerSym);
+      if (move !== -1) cpuBoard[move] = cpuSym;
+      renderBoard('cpuBoard', cpuBoard, cpuPlayerMove);
+      document.getElementById('cpuStatus').textContent = "Your turn";
+      document.getElementById('cpuYou').classList.add('active');
+      document.getElementById('cpuBot').classList.remove('active');
+    }, 800);
+  } else {
+    // Player goes first
+    document.getElementById('cpuStatus').textContent = "Your turn";
+    document.getElementById('cpuYou').classList.add('active');
+    document.getElementById('cpuBot').classList.remove('active');
+  }
 }
 
 function cpuPlayerMove(i) {
   if (cpuGameOver || cpuBoard[i] !== null) return;
-  cpuBoard[i] = 'X';
+  cpuBoard[i] = playerSym;
   renderBoard('cpuBoard', cpuBoard, cpuPlayerMove);
   let res = checkWin(cpuBoard);
   if (res) return endCpuGame(res);
@@ -374,8 +428,8 @@ function cpuPlayerMove(i) {
   document.getElementById('cpuBot').classList.add('active');
 
   setTimeout(() => {
-    const move = bestMove(cpuBoard);
-    if (move !== -1) cpuBoard[move] = 'O';
+    const move = bestMove(cpuBoard, cpuSym, playerSym);
+    if (move !== -1) cpuBoard[move] = cpuSym;
     renderBoard('cpuBoard', cpuBoard, cpuPlayerMove);
     let r = checkWin(cpuBoard);
     if (r) return endCpuGame(r);
@@ -393,7 +447,7 @@ function endCpuGame(res) {
     incrementScore('draw');
     document.getElementById('cpuStatus').textContent = "Draw";
     showDareModal('Draw!', "No winner this round", null, null);
-  } else if (res.winner === 'X') {
+  } else if (res.winner === playerSym) {
     incrementScore('win');
     document.getElementById('cpuStatus').textContent = "You Win!";
     const dare = dares[Math.floor(Math.random() * dares.length)];
@@ -415,12 +469,14 @@ function checkWin(b) {
   return null;
 }
 
-function bestMove(board) {
+function bestMove(board, aiSym, humanSym) {
+  aiSym = aiSym || 'O';
+  humanSym = humanSym || 'X';
   let bestScore = -Infinity, move = -1;
   for (let i = 0; i < 9; i++) {
     if (board[i] === null) {
-      board[i] = 'O';
-      let score = minimax(board, 0, false);
+      board[i] = aiSym;
+      let score = minimax(board, 0, false, aiSym, humanSym);
       board[i] = null;
       if (score > bestScore) { bestScore = score; move = i; }
     }
@@ -428,19 +484,19 @@ function bestMove(board) {
   return move;
 }
 
-function minimax(board, depth, isMax) {
+function minimax(board, depth, isMax, aiSym, humanSym) {
   const res = checkWin(board);
   if (res) {
-    if (res.winner === 'O') return 10 - depth;
-    if (res.winner === 'X') return depth - 10;
+    if (res.winner === aiSym) return 10 - depth;
+    if (res.winner === humanSym) return depth - 10;
     return 0;
   }
   if (isMax) {
     let best = -Infinity;
     for (let i = 0; i < 9; i++) {
       if (board[i] === null) {
-        board[i] = 'O';
-        best = Math.max(best, minimax(board, depth + 1, false));
+        board[i] = aiSym;
+        best = Math.max(best, minimax(board, depth + 1, false, aiSym, humanSym));
         board[i] = null;
       }
     }
@@ -449,8 +505,8 @@ function minimax(board, depth, isMax) {
     let best = Infinity;
     for (let i = 0; i < 9; i++) {
       if (board[i] === null) {
-        board[i] = 'X';
-        best = Math.min(best, minimax(board, depth + 1, true));
+        board[i] = humanSym;
+        best = Math.min(best, minimax(board, depth + 1, true, aiSym, humanSym));
         board[i] = null;
       }
     }
